@@ -9,8 +9,18 @@ const http = require('http');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// API Key - in produzione dovrebbe essere in variabili d'ambiente
-const API_KEY = process.env.API_KEY || 'ffmpeg-secret-key-2024';
+// API Key - SOLO da variabile d'ambiente per sicurezza
+const API_KEY = process.env.API_KEY;
+
+// Verifica che l'API key sia impostata
+if (!API_KEY) {
+  console.error('❌ ERRORE: Variabile d\'ambiente API_KEY non impostata!');
+  console.error('🔐 Imposta la variabile API_KEY su Railway o nel file .env');
+  console.error('💡 Esempio: API_KEY=ARISE100');
+  process.exit(1);
+}
+
+console.log('🔐 API Key configurata correttamente');
 
 // Middleware per verificare API key
 function authenticateApiKey(req, res, next) {
@@ -208,16 +218,18 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
+    authentication: 'API Key configurata tramite variabile d\'ambiente',
     endpoints: {
       health: '/api/health (PUBBLICO)',
       ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
       extractMP3: '/api/extract-mp3 (PROTETTO - Richiede API Key)',
       extractMP3Test: '/api/extract-mp3-test (PROTETTO - Richiede API Key)'
     },
-    authentication: {
-      method: 'API Key',
+    security: {
+      method: 'API Key da variabile d\'ambiente',
       header: 'x-api-key: YOUR_API_KEY',
-      alternative: 'Authorization: Bearer YOUR_API_KEY'
+      alternative: 'Authorization: Bearer YOUR_API_KEY',
+      note: 'API Key non visibile nel codice sorgente'
     }
   });
 });
@@ -227,7 +239,8 @@ app.get('/', (req, res) => {
   res.json({
     message: 'Instagram Video Processor API - MP3 Extractor (PROTETTO)',
     version: '1.0.0',
-    authentication: 'Richiede API Key per gli endpoint protetti',
+    authentication: 'Richiede API Key da variabile d\'ambiente per gli endpoint protetti',
+    security: 'API Key gestita tramite variabile d\'ambiente API_KEY',
     endpoints: {
       health: '/api/health (PUBBLICO)',
       ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
@@ -245,6 +258,10 @@ app.get('/', (req, res) => {
         body: { videoUrl: 'https://example.com/video.mp4' },
         response: 'MP3 file'
       }
+    },
+    setup: {
+      note: 'Imposta la variabile d\'ambiente API_KEY su Railway',
+      example: 'API_KEY=ARISE100'
     }
   });
 });
@@ -252,7 +269,7 @@ app.get('/', (req, res) => {
 // Avvia il server
 app.listen(PORT, () => {
   console.log(`🚀 Server avviato sulla porta ${PORT}`);
-  console.log(`🔐 API Key: ${API_KEY}`);
+  console.log(`🔐 API Key configurata tramite variabile d'ambiente`);
   console.log(`📱 Health check: http://localhost:${PORT}/api/health`);
   console.log(`🎬 FFmpeg test: http://localhost:${PORT}/api/ffmpeg-test`);
   console.log(`🎵 MP3 Extractor: POST http://localhost:${PORT}/api/extract-mp3 (Richiede API Key)`);

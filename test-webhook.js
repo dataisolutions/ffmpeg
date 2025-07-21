@@ -3,7 +3,7 @@ const fs = require('fs');
 
 // Configurazione
 const RAILWAY_URL = 'https://ffmpeg-production-c6ca.up.railway.app';
-const API_KEY = 'ffmpeg-secret-key-2024'; // API Key per l'autenticazione
+const API_KEY = process.env.API_KEY || 'ARISE100'; // Usa variabile d'ambiente o fallback per test
 const TEST_VIDEO_URL = 'https://instagram.foma1-2.fna.fbcdn.net/o1/v/t16/f2/m86/AQOLGq5Glj5s7K5P6lgI2owieCzi5Js09Is3le0NTnJBeqau5G3LK5-dLG2UO9RTysvNRZPd7gOdE_ag2UcEDJtrIi5Ig7puLuWsGEE.mp4?stp=dst-mp4&efg=eyJxZV9ncm91cHMiOiJbXCJpZ193ZWJfZGVsaXZlcnlfdnRzX290ZlwiXSIsInZlbmNvZGVfdGFnIjoidnRzX3ZvZF91cmxnZW4uY2xpcHMuYzIuNzIwLmJhc2VsaW5lIn0&_nc_cat=108&vs=1374378593672367_353199925&_nc_vs=HBksFQIYUmlnX3hwdl9yZWVsc19wZXJtYW5lbnRfc3JfcHJvZC8wRjQzNDQ1MkNEMjc3QjRDMTg4QzU2RTRDOEIwODZCN192aWRlb19kYXNoaW5pdC5tcDQVAALIARIAFQIYOnBhc3N0aHJvdWdoX2V2ZXJzdG9yZS9HT3FiSEItbVFMVWp6WmtGQU84VnJqY05HaXhWYnFfRUFBQUYVAgLIARIAKAAYABsAFQAAJvbyyPDZm9Q%2FFQIoAkMzLBdAemR64UeuFBgSZGFzaF9iYXNlbGluZV8xX3YxEQB1%2Fgdl5p0BAA%3D%3D&_nc_rid=4f5d7ad472&ccb=9-4&oh=00_AfRGHXH5Q2Fv5KBl0dfAHiQpMCVCCCJSabpSYWDXWHkukQ&oe=687F0970&_nc_sid=10d13b';
 
 // Funzione per testare l'estrazione MP3
@@ -82,6 +82,8 @@ async function testMP3Extraction(videoUrl) {
 async function runTest() {
   try {
     console.log('🚀 Iniziando test MP3 extraction con autenticazione...\n');
+    console.log(`🔑 API Key utilizzata: ${API_KEY}`);
+    console.log(`💡 Per cambiare API key, imposta la variabile d'ambiente: API_KEY=la-tua-chiave\n`);
     
     const result = await testMP3Extraction(TEST_VIDEO_URL);
     

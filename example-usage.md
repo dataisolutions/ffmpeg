@@ -2,7 +2,15 @@
 
 ## 🔐 Autenticazione
 
-L'API richiede un'API key per gli endpoint protetti. La chiave predefinita è: `ffmpeg-secret-key-2024`
+L'API richiede un'API key per gli endpoint protetti. La chiave deve essere configurata tramite variabile d'ambiente `API_KEY`.
+
+**⚠️ IMPORTANTE**: L'API key NON è visibile nel codice sorgente per motivi di sicurezza.
+
+### Configurazione su Railway:
+1. Vai su Railway Dashboard
+2. Seleziona il tuo progetto
+3. Vai su "Variables"
+4. Aggiungi: `API_KEY=ARISE100`
 
 ## 📡 Endpoint protetti
 
@@ -22,7 +30,7 @@ L'API richiede un'API key per gli endpoint protetti. La chiave predefinita è: `
 # Estrai MP3 da video
 curl -X POST https://ffmpeg-production-c6ca.up.railway.app/api/extract-mp3 \
   -H "Content-Type: application/json" \
-  -H "x-api-key: ffmpeg-secret-key-2024" \
+  -H "x-api-key: ARISE100" \
   -d '{"videoUrl": "https://example.com/video.mp4"}' \
   --output extracted.mp3
 ```
@@ -34,7 +42,7 @@ const response = await fetch('https://ffmpeg-production-c6ca.up.railway.app/api/
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'x-api-key': 'ffmpeg-secret-key-2024'
+    'x-api-key': 'ARISE100'
   },
   body: JSON.stringify({
     videoUrl: 'https://example.com/video.mp4'
@@ -61,7 +69,7 @@ response = requests.post(
     'https://ffmpeg-production-c6ca.up.railway.app/api/extract-mp3',
     headers={
         'Content-Type': 'application/json',
-        'x-api-key': 'ffmpeg-secret-key-2024'
+        'x-api-key': 'ARISE100'
     },
     json={'videoUrl': 'https://example.com/video.mp4'}
 )
@@ -86,7 +94,7 @@ curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
     'Content-Type: application/json',
-    'x-api-key: ffmpeg-secret-key-2024'
+    'x-api-key: ARISE100'
 ]);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
@@ -104,10 +112,12 @@ if ($httpCode === 200) {
 
 ## 🔒 Sicurezza
 
-- L'API key è obbligatoria per gli endpoint protetti
-- Senza API key riceverai errore 401 (Unauthorized)
-- Con API key sbagliata riceverai errore 403 (Forbidden)
-- Gli endpoint pubblici non richiedono autenticazione
+- **API Key obbligatoria** per gli endpoint protetti
+- **API Key gestita tramite variabile d'ambiente** (non nel codice)
+- **401 Unauthorized**: API key mancante
+- **403 Forbidden**: API key non valida
+- **Endpoint pubblici** non richiedono autenticazione
+- **Nessuna chiave hardcoded** nel codice sorgente
 
 ## 📊 Risposte
 
@@ -128,11 +138,33 @@ if ($httpCode === 200) {
 ## 🧪 Test locale
 
 ```bash
+# Con API key predefinita
 node test-webhook.js
+
+# Con API key personalizzata
+API_KEY=la-tua-chiave node test-webhook.js
 ```
 
 ## 🌐 URL Live
 
 - **App**: https://ffmpeg-production-c6ca.up.railway.app
 - **Health**: https://ffmpeg-production-c6ca.up.railway.app/api/health
-- **FFmpeg Test**: https://ffmpeg-production-c6ca.up.railway.app/api/ffmpeg-test 
+- **FFmpeg Test**: https://ffmpeg-production-c6ca.up.railway.app/api/ffmpeg-test
+
+## 🔧 Configurazione
+
+### Variabile d'ambiente richiesta:
+```
+API_KEY=ARISE100
+```
+
+### Dove configurarla:
+- **Railway**: Dashboard → Variables → Add Variable
+- **Locale**: File `.env` o variabile d'ambiente del sistema
+- **Docker**: `-e API_KEY=ARISE100`
+
+### Sicurezza:
+- ✅ API Key non visibile nel codice
+- ✅ Gestione tramite variabile d'ambiente
+- ✅ Validazione all'avvio dell'applicazione
+- ✅ Messaggi di errore chiari se non configurata 

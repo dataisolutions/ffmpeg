@@ -2,11 +2,17 @@
 
 Un'applicazione Node.js con FFmpeg per estrarre MP3 da video tramite webhook protetto, deployata su Railway.
 
-## 🔐 Autenticazione
+## 🔐 Autenticazione Sicura
 
-L'API richiede un'API key per gli endpoint protetti. La chiave predefinita è: `ffmpeg-secret-key-2024`
+L'API richiede un'API key per gli endpoint protetti. La chiave è gestita tramite variabile d'ambiente `API_KEY` per massima sicurezza.
 
-**⚠️ IMPORTANTE**: In produzione, cambia l'API key tramite variabile d'ambiente `API_KEY` su Railway.
+**⚠️ IMPORTANTE**: L'API key NON è visibile nel codice sorgente per motivi di sicurezza.
+
+### Configurazione su Railway:
+1. Vai su Railway Dashboard
+2. Seleziona il tuo progetto `ffmpeg-datai`
+3. Vai su "Variables"
+4. Aggiungi: `API_KEY=ARISE100`
 
 ## 🚀 Deploy su Railway
 
@@ -28,10 +34,10 @@ L'API richiede un'API key per gli endpoint protetti. La chiave predefinita è: `
    - Seleziona il tuo repository
    - Railway rileverà automaticamente il Dockerfile
 
-3. **Configura le variabili d'ambiente:**
-   - `NODE_ENV=production`
-   - `PORT=3000`
-   - `API_KEY=la-tua-chiave-segreta` (OPZIONALE - cambia la chiave predefinita)
+3. **Configura le variabili d'ambiente OBBLIGATORIE:**
+   - `API_KEY=ARISE100` (OBBLIGATORIO)
+   - `NODE_ENV=production` (OPZIONALE)
+   - `PORT=3000` (OPZIONALE)
 
 ### Opzione 2: Deploy con Docker Image
 
@@ -59,7 +65,7 @@ POST /api/extract-mp3
 ### Headers richiesti
 ```
 Content-Type: application/json
-x-api-key: ffmpeg-secret-key-2024
+x-api-key: ARISE100
 ```
 
 ### Body della richiesta
@@ -81,7 +87,7 @@ x-api-key: ffmpeg-secret-key-2024
 ```bash
 curl -X POST https://ffmpeg-production-c6ca.up.railway.app/api/extract-mp3 \
   -H "Content-Type: application/json" \
-  -H "x-api-key: ffmpeg-secret-key-2024" \
+  -H "x-api-key: ARISE100" \
   -d '{"videoUrl": "https://example.com/video.mp4"}' \
   --output extracted.mp3
 ```
@@ -92,7 +98,7 @@ const response = await fetch('https://ffmpeg-production-c6ca.up.railway.app/api/
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
-    'x-api-key': 'ffmpeg-secret-key-2024'
+    'x-api-key': 'ARISE100'
   },
   body: JSON.stringify({
     videoUrl: 'https://example.com/video.mp4'
@@ -113,7 +119,7 @@ response = requests.post(
     'https://ffmpeg-production-c6ca.up.railway.app/api/extract-mp3',
     headers={
         'Content-Type': 'application/json',
-        'x-api-key': 'ffmpeg-secret-key-2024'
+        'x-api-key': 'ARISE100'
     },
     json={'videoUrl': 'https://example.com/video.mp4'}
 )
@@ -125,7 +131,11 @@ if response.status_code == 200:
 
 ### Test locale
 ```bash
+# Con API key predefinita
 node test-webhook.js
+
+# Con API key personalizzata
+API_KEY=la-tua-chiave node test-webhook.js
 ```
 
 ## 📁 Struttura del progetto
@@ -145,6 +155,9 @@ node test-webhook.js
 ```bash
 # Installa dipendenze
 npm install
+
+# Configura variabile d'ambiente
+export API_KEY=ARISE100
 
 # Avvia in modalità sviluppo
 npm run dev
@@ -167,13 +180,16 @@ node test-webhook.js
 - `POST /api/extract-mp3` - Estrai MP3 da URL video
 - `GET /api/extract-mp3-test` - Test endpoint (GET)
 
-## 🔒 Sicurezza
+## 🔒 Sicurezza Avanzata
 
 - **API Key obbligatoria** per gli endpoint protetti
+- **API Key gestita tramite variabile d'ambiente** (non nel codice)
+- **Validazione all'avvio** dell'applicazione
 - **401 Unauthorized**: API key mancante
 - **403 Forbidden**: API key non valida
 - **Endpoint pubblici** per health check e test FFmpeg
 - **Gestione errori** completa con messaggi chiari
+- **Nessuna chiave hardcoded** nel codice sorgente
 
 ## 🐳 Docker
 
@@ -182,13 +198,15 @@ Il progetto include un Dockerfile ottimizzato per Railway che:
 - Installa FFmpeg automaticamente
 - Configura l'ambiente di produzione
 - Gestisce file temporanei
-- Supporta variabili d'ambiente per API key
+- Richiede variabile d'ambiente `API_KEY`
 
 ## 📝 Funzionalità
 
 - ✅ **Download video** da URL
 - ✅ **Estrazione MP3** con FFmpeg
 - ✅ **Autenticazione API key** per sicurezza
+- ✅ **Gestione variabile d'ambiente** per API key
+- ✅ **Validazione configurazione** all'avvio
 - ✅ **Pulizia automatica** file temporanei
 - ✅ **Gestione errori** completa
 - ✅ **Headers corretti** per download
@@ -196,6 +214,11 @@ Il progetto include un Dockerfile ottimizzato per Railway che:
 - ✅ **Endpoint pubblici** per health check
 
 ## 🆘 Troubleshooting
+
+Se l'app non si avvia:
+1. **Verifica che la variabile `API_KEY` sia impostata** su Railway
+2. Controlla i log su Railway per errori di configurazione
+3. Assicurati che il valore sia: `API_KEY=ARISE100`
 
 Se FFmpeg non funziona:
 1. Controlla i log su Railway
@@ -210,12 +233,33 @@ Se l'estrazione MP3 fallisce:
 
 Se ricevi errore 401/403:
 1. Verifica che l'header `x-api-key` sia presente
-2. Controlla che l'API key sia corretta: `ffmpeg-secret-key-2024`
-3. In alternativa usa: `Authorization: Bearer ffmpeg-secret-key-2024`
+2. Controlla che l'API key sia corretta: `ARISE100`
+3. In alternativa usa: `Authorization: Bearer ARISE100`
+4. **Verifica che la variabile d'ambiente sia configurata su Railway**
 
 ## 🌐 URL Live
 
 - **App**: https://ffmpeg-production-c6ca.up.railway.app
 - **Health**: https://ffmpeg-production-c6ca.up.railway.app/api/health
 - **FFmpeg Test**: https://ffmpeg-production-c6ca.up.railway.app/api/ffmpeg-test
-- **MP3 Extractor**: POST https://ffmpeg-production-c6ca.up.railway.app/api/extract-mp3 (Richiede API Key) 
+- **MP3 Extractor**: POST https://ffmpeg-production-c6ca.up.railway.app/api/extract-mp3 (Richiede API Key)
+
+## 🔧 Configurazione Variabili d'Ambiente
+
+### Railway Dashboard:
+1. Vai su Railway Dashboard
+2. Seleziona il progetto `ffmpeg-datai`
+3. Clicca su "Variables"
+4. Aggiungi: `API_KEY=ARISE100`
+
+### Locale (.env):
+```env
+API_KEY=ARISE100
+NODE_ENV=development
+PORT=3000
+```
+
+### Docker:
+```bash
+docker run -e API_KEY=ARISE100 -p 3000:3000 your-app
+``` 
