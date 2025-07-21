@@ -9,6 +9,32 @@ const http = require('http');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// API Key - in produzione dovrebbe essere in variabili d'ambiente
+const API_KEY = process.env.API_KEY || 'ffmpeg-secret-key-2024';
+
+// Middleware per verificare API key
+function authenticateApiKey(req, res, next) {
+  const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+  
+  if (!apiKey) {
+    return res.status(401).json({
+      success: false,
+      error: 'API Key mancante',
+      message: 'Fornisci l\'API key negli headers: x-api-key o Authorization: Bearer YOUR_KEY'
+    });
+  }
+  
+  if (apiKey !== API_KEY) {
+    return res.status(403).json({
+      success: false,
+      error: 'API Key non valida',
+      message: 'L\'API key fornita non è corretta'
+    });
+  }
+  
+  next();
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -63,8 +89,8 @@ function extractMP3(videoPath, audioPath) {
   });
 }
 
-// Webhook per estrarre MP3 da URL video
-app.post('/api/extract-mp3', async (req, res) => {
+// Webhook per estrarre MP3 da URL video (PROTETTO)
+app.post('/api/extract-mp3', authenticateApiKey, async (req, res) => {
   try {
     const { videoUrl } = req.body;
     
@@ -128,8 +154,8 @@ app.post('/api/extract-mp3', async (req, res) => {
   }
 });
 
-// Endpoint per testare l'estrazione (GET per facilità di test)
-app.get('/api/extract-mp3-test', async (req, res) => {
+// Endpoint per testare l'estrazione (GET per facilità di test) - PROTETTO
+app.get('/api/extract-mp3-test', authenticateApiKey, async (req, res) => {
   const { url } = req.query;
   
   if (!url) {
@@ -152,7 +178,7 @@ app.get('/api/extract-mp3-test', async (req, res) => {
   });
 });
 
-// Test FFmpeg endpoint
+// Test FFmpeg endpoint (PUBBLICO)
 app.get('/api/ffmpeg-test', (req, res) => {
   exec('ffmpeg -version', (error, stdout, stderr) => {
     if (error) {
@@ -176,36 +202,46 @@ app.get('/api/ffmpeg-test', (req, res) => {
   });
 });
 
-// Health check endpoint
+// Health check endpoint (PUBBLICO)
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development',
     endpoints: {
-      health: '/api/health',
-      ffmpegTest: '/api/ffmpeg-test',
-      extractMP3: '/api/extract-mp3 (POST)',
-      extractMP3Test: '/api/extract-mp3-test (GET)'
+      health: '/api/health (PUBBLICO)',
+      ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
+      extractMP3: '/api/extract-mp3 (PROTETTO - Richiede API Key)',
+      extractMP3Test: '/api/extract-mp3-test (PROTETTO - Richiede API Key)'
+    },
+    authentication: {
+      method: 'API Key',
+      header: 'x-api-key: YOUR_API_KEY',
+      alternative: 'Authorization: Bearer YOUR_API_KEY'
     }
   });
 });
 
-// Root endpoint
+// Root endpoint (PUBBLICO)
 app.get('/', (req, res) => {
   res.json({
-    message: 'Instagram Video Processor API - MP3 Extractor',
+    message: 'Instagram Video Processor API - MP3 Extractor (PROTETTO)',
     version: '1.0.0',
+    authentication: 'Richiede API Key per gli endpoint protetti',
     endpoints: {
-      health: '/api/health',
-      ffmpegTest: '/api/ffmpeg-test',
-      extractMP3: '/api/extract-mp3 (POST)',
-      extractMP3Test: '/api/extract-mp3-test (GET)'
+      health: '/api/health (PUBBLICO)',
+      ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
+      extractMP3: '/api/extract-mp3 (PROTETTO)',
+      extractMP3Test: '/api/extract-mp3-test (PROTETTO)'
     },
     usage: {
       extractMP3: {
         method: 'POST',
         url: '/api/extract-mp3',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'YOUR_API_KEY'
+        },
         body: { videoUrl: 'https://example.com/video.mp4' },
         response: 'MP3 file'
       }
@@ -216,7 +252,8 @@ app.get('/', (req, res) => {
 // Avvia il server
 app.listen(PORT, () => {
   console.log(`🚀 Server avviato sulla porta ${PORT}`);
+  console.log(`🔐 API Key: ${API_KEY}`);
   console.log(`📱 Health check: http://localhost:${PORT}/api/health`);
   console.log(`🎬 FFmpeg test: http://localhost:${PORT}/api/ffmpeg-test`);
-  console.log(`🎵 MP3 Extractor: POST http://localhost:${PORT}/api/extract-mp3`);
+  console.log(`🎵 MP3 Extractor: POST http://localhost:${PORT}/api/extract-mp3 (Richiede API Key)`);
 }); 
