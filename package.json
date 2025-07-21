@@ -1,0 +1,23 @@
+{
+  "name": "instagram-video-processor",
+  "version": "1.0.0",
+  "description": "Instagram video processing with FFmpeg on Railway",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "node test-ffmpeg.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": ["instagram", "video", "ffmpeg", "railway"],
+  "author": "Your Name",
+  "license": "MIT"
+} 
