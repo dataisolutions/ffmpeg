@@ -1,6 +1,6 @@
-# Instagram Video Processor - MP3 Extractor (PROTETTO)
+# Instagram Video Processor - MP3 Extractor & Image Resizer (PROTETTO)
 
-Un'applicazione Node.js con FFmpeg per estrarre MP3 da video tramite webhook protetto, deployata su Railway.
+Un'applicazione Node.js con FFmpeg per estrarre MP3 da video e ridimensionare immagini tramite webhook protetto, deployata su Railway con integrazione Supabase Storage.
 
 ## 🔐 Autenticazione Sicura
 
@@ -12,7 +12,10 @@ L'API richiede un'API key per gli endpoint protetti. La chiave è gestita tramit
 1. Vai su Railway Dashboard
 2. Seleziona il tuo progetto `ffmpeg-datai`
 3. Vai su "Variables"
-4. Aggiungi: `API_KEY=ARISE100`
+4. Aggiungi le variabili d'ambiente:
+   - `API_KEY=ARISE100` (OBBLIGATORIO)
+   - `SUPABASE_URL=https://bayjsvnbzomfycypeerx.supabase.co` (OPZIONALE)
+   - `SUPABASE_ANON_KEY=your_supabase_anon_key` (OPZIONALE - per storage immagini)
 
 ## 🚀 Deploy su Railway
 
@@ -34,8 +37,10 @@ L'API richiede un'API key per gli endpoint protetti. La chiave è gestita tramit
    - Seleziona il tuo repository
    - Railway rileverà automaticamente il Dockerfile
 
-3. **Configura le variabili d'ambiente OBBLIGATORIE:**
+3. **Configura le variabili d'ambiente:**
    - `API_KEY=ARISE100` (OBBLIGATORIO)
+   - `SUPABASE_URL=https://bayjsvnbzomfycypeerx.supabase.co` (OPZIONALE)
+   - `SUPABASE_ANON_KEY=your_supabase_anon_key` (OPZIONALE - per storage immagini)
    - `NODE_ENV=production` (OPZIONALE)
    - `PORT=3000` (OPZIONALE)
 
@@ -138,6 +143,109 @@ node test-webhook.js
 API_KEY=la-tua-chiave node test-webhook.js
 ```
 
+## 📱 Webhook Instagram (PROTETTO)
+
+### Endpoint principale
+```
+POST /api/process-instagram-webhook
+```
+
+### Funzionalità
+- **Estrazione MP3**: Da video Instagram (se presenti)
+- **Ridimensionamento Immagini**: A 56px di larghezza
+- **Upload Supabase Storage**: Salvataggio thumbnail nel bucket "thumbnail"
+- **Aggiornamento Database**: Tabella `instagram_posts` con URL thumbnail
+
+### Headers richiesti
+```
+Content-Type: application/json
+x-api-key: ARISE100
+```
+
+### Body della richiesta
+```json
+{
+  "posts": [
+    {
+      "post_id": "123456789",
+      "display_url": "https://example.com/image.jpg",
+      "video_url": "https://example.com/video.mp4"
+    }
+  ]
+}
+```
+
+### Esempio di utilizzo
+
+#### cURL
+```bash
+curl -X POST https://ffmpeg-production-c6ca.up.railway.app/api/process-instagram-webhook \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: ARISE100" \
+  -d '{
+    "posts": [
+      {
+        "post_id": "123456789",
+        "display_url": "https://example.com/image.jpg",
+        "video_url": "https://example.com/video.mp4"
+      }
+    ]
+  }'
+```
+
+#### JavaScript
+```javascript
+const response = await fetch('https://ffmpeg-production-c6ca.up.railway.app/api/process-instagram-webhook', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-api-key': 'ARISE100'
+  },
+  body: JSON.stringify({
+    posts: [
+      {
+        post_id: '123456789',
+        display_url: 'https://example.com/image.jpg',
+        video_url: 'https://example.com/video.mp4'
+      }
+    ]
+  })
+});
+
+const result = await response.json();
+console.log(result);
+```
+
+### Risposta
+```json
+{
+  "success": true,
+  "processed": 1,
+  "results": [
+    {
+      "post_id": "123456789",
+      "success": true,
+      "has_video": true,
+      "has_image": true,
+      "audio": {
+        "audio_size_mb": "0.69",
+        "filename": "123456789.mp3"
+      },
+      "image": {
+        "supabase": {
+          "success": true,
+          "publicUrl": "https://bayjsvnbzomfycypeerx.supabase.co/storage/v1/object/public/thumbnail/123456789_thumb.jpg"
+        },
+        "database_update": {
+          "success": true,
+          "updated_rows": 1
+        }
+      }
+    }
+  ]
+}
+```
+
 ## 📁 Struttura del progetto
 
 ```
@@ -175,7 +283,27 @@ npm run dev
 
 ### Endpoint protetti (Richiedono API key)
 - `POST /api/extract-mp3` - Estrai MP3 da URL video
+- `POST /api/process-instagram-webhook` - Processa array di post Instagram
 - `GET /api/extract-mp3-test` - Test endpoint (GET)
+
+## 🛠️ Tecnologie e Dipendenze
+
+### Core
+- **Node.js 18**: Runtime JavaScript
+- **Express.js**: Framework web
+- **FFmpeg**: Elaborazione video/audio
+
+### Image Processing
+- **Sharp**: Ridimensionamento immagini ad alta performance
+- **VIPS**: Libreria di sistema per Sharp
+
+### Cloud Storage
+- **Supabase**: Database e storage cloud
+- **@supabase/supabase-js**: Client JavaScript per Supabase
+
+### Sicurezza
+- **CORS**: Gestione cross-origin requests
+- **API Key Authentication**: Autenticazione tramite header
 
 ## 🔒 Sicurezza Avanzata
 
