@@ -1,13 +1,14 @@
 {
   "name": "instagram-video-processor",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Instagram video processing with FFmpeg on Railway",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test-image": "node test-image-resize.js",
-    "test-supabase": "node test-supabase-integration.js"
+    "test-supabase": "node test-supabase-integration.js",
+    "test-database": "node test-database-update.js"
   },
   "dependencies": {
     "express": "^4.18.2",

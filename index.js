@@ -236,6 +236,48 @@ async function deleteImageFromSupabase(filename) {
   }
 }
 
+// Funzione per aggiornare la tabella instagram_posts con l'URL del thumbnail
+async function updateInstagramPostThumbnail(postId, thumbnailUrl) {
+  if (!supabase) {
+    throw new Error('Supabase non configurato - imposta SUPABASE_ANON_KEY');
+  }
+  
+  try {
+    console.log(`📝 [Supabase] Aggiornando thumbnail per post_id: ${postId}`);
+    
+    const { data, error } = await supabase
+      .from('instagram_posts')
+      .update({ thumbnail: thumbnailUrl })
+      .eq('post_id', postId)
+      .select();
+    
+    if (error) {
+      throw new Error(`Supabase update error: ${error.message}`);
+    }
+    
+    if (data && data.length > 0) {
+      console.log(`✅ [Supabase] Thumbnail aggiornato per post_id: ${postId}`);
+      return {
+        success: true,
+        post_id: postId,
+        thumbnail: thumbnailUrl,
+        updated_rows: data.length
+      };
+    } else {
+      console.warn(`⚠️ [Supabase] Nessun record trovato per post_id: ${postId}`);
+      return {
+        success: false,
+        post_id: postId,
+        error: 'Record non trovato'
+      };
+    }
+    
+  } catch (error) {
+    console.error(`❌ [Supabase] Errore aggiornamento thumbnail:`, error.message);
+    throw error;
+  }
+}
+
 // Webhook per estrarre MP3 da URL video (PROTETTO)
 app.post('/api/extract-mp3', authenticateApiKey, async (req, res) => {
   try {
@@ -432,6 +474,17 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
                 const supabaseResult = await uploadImageToSupabase(imageBuffer, `${post_id}_thumb.jpg`);
                 imageResult.supabase = supabaseResult;
                 console.log(`☁️ [${post_id}] Immagine salvata su Supabase: ${supabaseResult.publicUrl}`);
+                
+                // Step 2.2: Aggiorna la tabella instagram_posts con l'URL del thumbnail
+                try {
+                  const updateResult = await updateInstagramPostThumbnail(post_id, supabaseResult.publicUrl);
+                  imageResult.database_update = updateResult;
+                  console.log(`📝 [${post_id}] Tabella aggiornata: ${updateResult.success ? 'successo' : 'record non trovato'}`);
+                } catch (updateError) {
+                  console.warn(`⚠️ [${post_id}] Errore aggiornamento tabella:`, updateError.message);
+                  imageResult.database_update = { success: false, error: updateError.message };
+                }
+                
               } catch (supabaseError) {
                 console.warn(`⚠️ [${post_id}] Errore upload Supabase:`, supabaseError.message);
                 imageResult.supabase = { success: false, error: supabaseError.message };
@@ -580,8 +633,8 @@ app.get('/api/health', (req, res) => {
 // Root endpoint (PUBBLICO)
 app.get('/', (req, res) => {
   res.json({
-    message: 'Instagram Video Processor API - MP3 Extractor & Image Resizer with Supabase Storage (PROTETTO)',
-    version: '2.2.0',
+    message: 'Instagram Video Processor API - MP3 Extractor & Image Resizer with Supabase Storage & Database Update (PROTETTO)',
+    version: '2.3.0',
     authentication: 'Richiede API Key da variabile d\'ambiente per gli endpoint protetti',
     security: 'API Key gestita tramite variabile d\'ambiente API_KEY',
     endpoints: {
