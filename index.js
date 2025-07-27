@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
+const sharp = require('sharp');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -96,6 +97,64 @@ function extractMP3(videoPath, audioPath) {
       }
       resolve(audioPath);
     });
+  });
+}
+
+// Funzione per scaricare e ridimensionare immagine
+async function downloadAndResizeImage(imageUrl, outputPath, targetWidth = 56) {
+  try {
+    // Step 1: Scarica l'immagine
+    const imageBuffer = await downloadImageBuffer(imageUrl);
+    
+    // Step 2: Ridimensiona l'immagine
+    const resizedBuffer = await sharp(imageBuffer)
+      .resize(targetWidth, null, { // larghezza 56px, altezza automatica
+        withoutEnlargement: true, // non ingrandire se l'immagine è già più piccola
+        fit: 'inside' // mantiene le proporzioni
+      })
+      .jpeg({ quality: 85 }) // formato JPEG con qualità 85%
+      .toBuffer();
+    
+    // Step 3: Salva l'immagine ridimensionata
+    fs.writeFileSync(outputPath, resizedBuffer);
+    
+    return {
+      success: true,
+      originalSize: imageBuffer.length,
+      resizedSize: resizedBuffer.length,
+      width: targetWidth,
+      height: null // sarà calcolata automaticamente
+    };
+    
+  } catch (error) {
+    throw new Error(`Errore nel processing dell'immagine: ${error.message}`);
+  }
+}
+
+// Funzione per scaricare immagine come buffer
+function downloadImageBuffer(url) {
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https:') ? https : http;
+    
+    protocol.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`));
+        return;
+      }
+      
+      const chunks = [];
+      
+      response.on('data', (chunk) => {
+        chunks.push(chunk);
+      });
+      
+      response.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        resolve(buffer);
+      });
+      
+      response.on('error', reject);
+    }).on('error', reject);
   });
 }
 
@@ -203,29 +262,32 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
     
     console.log(`📦 Ricevuto webhook con ${posts.length} contenuti Instagram`);
     
-    // Filtra solo i contenuti con video_url
-    const videoPosts = posts.filter(post => post.video_url && post.video_url.trim() !== '');
+    // Processa tutti i post (video e immagini)
+    const postsToProcess = posts.filter(post => 
+      (post.video_url && post.video_url.trim() !== '') || 
+      (post.display_url && post.display_url.trim() !== '')
+    );
     
-    if (videoPosts.length === 0) {
+    if (postsToProcess.length === 0) {
       return res.status(200).json({
         success: true,
-        message: 'Nessun video trovato da processare',
+        message: 'Nessun contenuto trovato da processare',
         processed: 0,
         results: []
       });
     }
     
-    console.log(`🎬 Trovati ${videoPosts.length} video da processare`);
+    console.log(`📦 Trovati ${postsToProcess.length} post da processare`);
     
     const results = [];
     const processedFiles = [];
     
-    // Processa ogni video sequenzialmente per evitare sovraccarichi
-    for (let i = 0; i < videoPosts.length; i++) {
-      const post = videoPosts[i];
+    // Processa ogni post sequenzialmente per evitare sovraccarichi
+    for (let i = 0; i < postsToProcess.length; i++) {
+      const post = postsToProcess[i];
       const { video_url, post_id, display_url } = post;
       
-      console.log(`🎬 [${i + 1}/${videoPosts.length}] Processando post_id: ${post_id}`);
+      console.log(`🎬 [${i + 1}/${postsToProcess.length}] Processando post_id: ${post_id}`);
       
       try {
         // Genera nomi file unici usando post_id
@@ -233,48 +295,84 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
         const videoPath = path.join(tempDir, `video_${post_id}_${timestamp}.mp4`);
         const audioPath = path.join(tempDir, `audio_${post_id}_${timestamp}.mp3`);
         const finalAudioPath = path.join(tempDir, `${post_id}.mp3`);
+        const imagePath = path.join(tempDir, `${post_id}_thumb.jpg`);
         
-        // Step 1: Scarica il video
-        console.log(`📥 [${post_id}] Scaricando video...`);
-        await downloadFile(video_url, videoPath);
-        console.log(`✅ [${post_id}] Video scaricato`);
+        let audioResult = null;
+        let imageResult = null;
         
-        // Step 2: Estrai MP3
-        console.log(`🎵 [${post_id}] Estraendo MP3...`);
-        await extractMP3(videoPath, audioPath);
-        console.log(`✅ [${post_id}] MP3 estratto`);
+        // Step 1: Processa il video (se presente)
+        if (video_url && video_url.trim() !== '') {
+          console.log(`📥 [${post_id}] Scaricando video...`);
+          await downloadFile(video_url, videoPath);
+          console.log(`✅ [${post_id}] Video scaricato`);
+          
+          console.log(`🎵 [${post_id}] Estraendo MP3...`);
+          await extractMP3(videoPath, audioPath);
+          console.log(`✅ [${post_id}] MP3 estratto`);
+          
+          // Rinomina il file con post_id
+          fs.renameSync(audioPath, finalAudioPath);
+          
+          // Leggi il file MP3
+          const audioBuffer = fs.readFileSync(finalAudioPath);
+          
+          audioResult = {
+            audio_size: audioBuffer.length,
+            audio_size_mb: (audioBuffer.length / 1024 / 1024).toFixed(2),
+            filename: `${post_id}.mp3`
+          };
+          
+          processedFiles.push({
+            post_id: post_id,
+            audio_buffer: audioBuffer,
+            filename: `${post_id}.mp3`
+          });
+          
+          // Pulisci file video temporanei
+          fs.unlinkSync(videoPath);
+          fs.unlinkSync(finalAudioPath);
+          
+          console.log(`🎉 [${post_id}] MP3 processato con successo (${audioResult.audio_size_mb} MB)`);
+        }
         
-        // Step 3: Rinomina il file con post_id
-        fs.renameSync(audioPath, finalAudioPath);
+        // Step 2: Processa l'immagine (se presente)
+        if (display_url && display_url.trim() !== '') {
+          console.log(`🖼️ [${post_id}] Scaricando e ridimensionando immagine...`);
+          
+          try {
+            imageResult = await downloadAndResizeImage(display_url, imagePath, 56);
+            
+            // Leggi l'immagine ridimensionata
+            const imageBuffer = fs.readFileSync(imagePath);
+            
+            imageResult.filename = `${post_id}_thumb.jpg`;
+            imageResult.buffer = imageBuffer;
+            
+            // Pulisci file immagine temporaneo
+            fs.unlinkSync(imagePath);
+            
+            console.log(`✅ [${post_id}] Immagine ridimensionata (${imageResult.resizedSize} bytes)`);
+            
+          } catch (imageError) {
+            console.warn(`⚠️ [${post_id}] Errore nel processing dell'immagine:`, imageError.message);
+            imageResult = { success: false, error: imageError.message };
+          }
+        }
         
-        // Step 4: Leggi il file MP3
-        const audioBuffer = fs.readFileSync(finalAudioPath);
-        
-        // Step 5: Pulisci i file temporanei
-        fs.unlinkSync(videoPath);
-        fs.unlinkSync(finalAudioPath);
-        
-        // Step 6: Aggiungi ai risultati
+        // Step 3: Aggiungi ai risultati
         results.push({
           post_id: post_id,
           success: true,
           display_url: display_url,
           video_url: video_url,
-          audio_size: audioBuffer.length,
-          audio_size_mb: (audioBuffer.length / 1024 / 1024).toFixed(2),
-          filename: `${post_id}.mp3`
+          audio: audioResult,
+          image: imageResult,
+          has_video: !!audioResult,
+          has_image: !!imageResult
         });
-        
-        processedFiles.push({
-          post_id: post_id,
-          audio_buffer: audioBuffer,
-          filename: `${post_id}.mp3`
-        });
-        
-        console.log(`🎉 [${post_id}] MP3 processato con successo (${(audioBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
         
         // Pausa tra le elaborazioni per non sovraccaricare
-        if (i < videoPosts.length - 1) {
+        if (i < postsToProcess.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
@@ -286,6 +384,7 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
           if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
           if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
           if (fs.existsSync(finalAudioPath)) fs.unlinkSync(finalAudioPath);
+          if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
         } catch (cleanupError) {
           console.error(`Errore durante la pulizia per ${post_id}:`, cleanupError);
         }
@@ -309,15 +408,21 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
       // se necessario con una libreria come 'archiver'
     }
     
-    console.log(`🎉 Webhook completato: ${results.filter(r => r.success).length}/${videoPosts.length} video processati con successo`);
+    const successfulResults = results.filter(r => r.success);
+    const videoCount = successfulResults.filter(r => r.has_video).length;
+    const imageCount = successfulResults.filter(r => r.has_image).length;
+    
+    console.log(`🎉 Webhook completato: ${successfulResults.length}/${postsToProcess.length} post processati con successo (${videoCount} video, ${imageCount} immagini)`);
     
     res.json({
       success: true,
-      message: `Processati ${results.filter(r => r.success).length}/${videoPosts.length} video con successo`,
+      message: `Processati ${successfulResults.length}/${postsToProcess.length} post con successo (${videoCount} video, ${imageCount} immagini)`,
       total_posts: posts.length,
-      video_posts: videoPosts.length,
-      processed: results.filter(r => r.success).length,
+      posts_to_process: postsToProcess.length,
+      processed: successfulResults.length,
       failed: results.filter(r => !r.success).length,
+      video_processed: videoCount,
+      images_processed: imageCount,
       results: results,
       files_available: processedFiles.map(f => f.filename)
     });
@@ -383,8 +488,8 @@ app.get('/api/health', (req, res) => {
 // Root endpoint (PUBBLICO)
 app.get('/', (req, res) => {
   res.json({
-    message: 'Instagram Video Processor API - MP3 Extractor (PROTETTO)',
-    version: '2.0.0',
+    message: 'Instagram Video Processor API - MP3 Extractor & Image Resizer (PROTETTO)',
+    version: '2.1.0',
     authentication: 'Richiede API Key da variabile d\'ambiente per gli endpoint protetti',
     security: 'API Key gestita tramite variabile d\'ambiente API_KEY',
     endpoints: {

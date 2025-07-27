@@ -1,7 +1,7 @@
 FROM node:18-alpine
 
-# Installa FFmpeg e dipendenze necessarie
-RUN apk add --no-cache ffmpeg
+# Installa FFmpeg e dipendenze necessarie per Sharp
+RUN apk add --no-cache ffmpeg vips-dev build-base python3
 
 # Imposta la directory di lavoro
 WORKDIR /app
