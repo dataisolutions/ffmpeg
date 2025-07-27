@@ -6,6 +6,7 @@ const fs = require('fs');
 const https = require('https');
 const http = require('http');
 const sharp = require('sharp');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,6 +23,20 @@ if (!API_KEY) {
 }
 
 console.log('🔐 API Key configurata correttamente');
+
+// Configurazione Supabase Storage
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bayjsvnbzomfycypeerx.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+if (!SUPABASE_ANON_KEY) {
+  console.warn('⚠️ ATTENZIONE: Variabile SUPABASE_ANON_KEY non impostata - Storage immagini disabilitato');
+  console.warn('💡 Per abilitare il salvataggio immagini, imposta SUPABASE_ANON_KEY');
+} else {
+  console.log('☁️ Supabase Storage configurato correttamente');
+}
+
+// Inizializza client Supabase
+const supabase = SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 // Middleware per verificare API key
 function authenticateApiKey(req, res, next) {
@@ -156,6 +171,69 @@ function downloadImageBuffer(url) {
       response.on('error', reject);
     }).on('error', reject);
   });
+}
+
+// Funzioni per Supabase Storage
+async function uploadImageToSupabase(imageBuffer, filename) {
+  if (!supabase) {
+    throw new Error('Supabase non configurato - imposta SUPABASE_ANON_KEY');
+  }
+  
+  try {
+    console.log(`☁️ [Supabase] Uploading ${filename} (${imageBuffer.length} bytes)...`);
+    
+    const { data, error } = await supabase.storage
+      .from('thumbnail')
+      .upload(filename, imageBuffer, {
+        contentType: 'image/jpeg',
+        upsert: true
+      });
+    
+    if (error) {
+      throw new Error(`Supabase upload error: ${error.message}`);
+    }
+    
+    // Genera URL pubblico
+    const { data: { publicUrl } } = supabase.storage
+      .from('thumbnail')
+      .getPublicUrl(filename);
+    
+    console.log(`✅ [Supabase] Upload completato: ${publicUrl}`);
+    
+    return {
+      success: true,
+      filename: filename,
+      publicUrl: publicUrl,
+      size: imageBuffer.length
+    };
+    
+  } catch (error) {
+    console.error(`❌ [Supabase] Errore upload:`, error.message);
+    throw error;
+  }
+}
+
+async function deleteImageFromSupabase(filename) {
+  if (!supabase) {
+    return; // Non fare nulla se Supabase non è configurato
+  }
+  
+  try {
+    console.log(`🗑️ [Supabase] Eliminando ${filename}...`);
+    
+    const { error } = await supabase.storage
+      .from('thumbnail')
+      .remove([filename]);
+    
+    if (error) {
+      console.warn(`⚠️ [Supabase] Errore eliminazione: ${error.message}`);
+    } else {
+      console.log(`✅ [Supabase] File eliminato: ${filename}`);
+    }
+    
+  } catch (error) {
+    console.warn(`⚠️ [Supabase] Errore eliminazione: ${error.message}`);
+  }
 }
 
 // Webhook per estrarre MP3 da URL video (PROTETTO)
@@ -348,6 +426,20 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
             imageResult.filename = `${post_id}_thumb.jpg`;
             imageResult.buffer = imageBuffer;
             
+            // Step 2.1: Upload su Supabase Storage (se configurato)
+            if (supabase) {
+              try {
+                const supabaseResult = await uploadImageToSupabase(imageBuffer, `${post_id}_thumb.jpg`);
+                imageResult.supabase = supabaseResult;
+                console.log(`☁️ [${post_id}] Immagine salvata su Supabase: ${supabaseResult.publicUrl}`);
+              } catch (supabaseError) {
+                console.warn(`⚠️ [${post_id}] Errore upload Supabase:`, supabaseError.message);
+                imageResult.supabase = { success: false, error: supabaseError.message };
+              }
+            } else {
+              console.log(`ℹ️ [${post_id}] Supabase non configurato - immagine solo in memoria`);
+            }
+            
             // Pulisci file immagine temporaneo
             fs.unlinkSync(imagePath);
             
@@ -488,8 +580,8 @@ app.get('/api/health', (req, res) => {
 // Root endpoint (PUBBLICO)
 app.get('/', (req, res) => {
   res.json({
-    message: 'Instagram Video Processor API - MP3 Extractor & Image Resizer (PROTETTO)',
-    version: '2.1.0',
+    message: 'Instagram Video Processor API - MP3 Extractor & Image Resizer with Supabase Storage (PROTETTO)',
+    version: '2.2.0',
     authentication: 'Richiede API Key da variabile d\'ambiente per gli endpoint protetti',
     security: 'API Key gestita tramite variabile d\'ambiente API_KEY',
     endpoints: {
