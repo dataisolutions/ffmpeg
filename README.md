@@ -141,13 +141,13 @@ API_KEY=la-tua-chiave node test-webhook.js
 ## 📁 Struttura del progetto
 
 ```
-├── Dockerfile          # Configurazione Docker per Railway
-├── package.json        # Dipendenze Node.js
-├── index.js           # Server Express con webhook MP3 protetto
-├── test-webhook.js    # Script di test per il webhook
-├── example-usage.md   # Esempi di utilizzo con autenticazione
-├── .dockerignore      # File esclusi dal container
-└── README.md          # Questo file
+├── Dockerfile                    # Configurazione Docker per Railway
+├── package.json                  # Dipendenze Node.js
+├── index.js                     # Server Express con webhook MP3 e Instagram
+├── instagram-webhook-guide.md   # Guida completa webhook Instagram
+├── .dockerignore                # File esclusi dal container
+├── .gitignore                   # File esclusi da Git
+└── README.md                    # Questo file
 ```
 
 ## 🔧 Sviluppo locale
@@ -162,11 +162,8 @@ export API_KEY=ARISE100
 # Avvia in modalità sviluppo
 npm run dev
 
-# Test FFmpeg
-npm test
-
-# Test webhook MP3 (con autenticazione)
-node test-webhook.js
+# Avvia in modalità sviluppo
+npm run dev
 ```
 
 ## 📡 Endpoints API
@@ -223,7 +220,7 @@ Se l'app non si avvia:
 Se FFmpeg non funziona:
 1. Controlla i log su Railway
 2. Verifica che il Dockerfile sia corretto
-3. Testa l'endpoint `/api/ffmpeg-test`
+3. Testa l'endpoint `/api/ffmpeg-test` (pubblico)
 
 Se l'estrazione MP3 fallisce:
 1. Verifica che l'URL del video sia accessibile

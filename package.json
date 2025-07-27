@@ -1,15 +1,11 @@
 {
   "name": "instagram-video-processor",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Instagram video processing with FFmpeg on Railway",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "node test-ffmpeg.js",
-    "test-webhook": "node test-webhook.js",
-    "test-concurrent": "node test-concurrent.js",
-    "test-instagram": "node test-instagram-webhook.js"
+    "dev": "nodemon index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
