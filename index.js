@@ -188,6 +188,151 @@ app.get('/api/extract-mp3-test', authenticateApiKey, async (req, res) => {
   });
 });
 
+// Webhook per processare array JSON di contenuti Instagram (PROTETTO)
+app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) => {
+  try {
+    const { posts } = req.body;
+    
+    if (!posts || !Array.isArray(posts)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Formato JSON non valido',
+        message: 'Il body deve contenere un array "posts" con i contenuti Instagram'
+      });
+    }
+    
+    console.log(`📦 Ricevuto webhook con ${posts.length} contenuti Instagram`);
+    
+    // Filtra solo i contenuti con video_url
+    const videoPosts = posts.filter(post => post.video_url && post.video_url.trim() !== '');
+    
+    if (videoPosts.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'Nessun video trovato da processare',
+        processed: 0,
+        results: []
+      });
+    }
+    
+    console.log(`🎬 Trovati ${videoPosts.length} video da processare`);
+    
+    const results = [];
+    const processedFiles = [];
+    
+    // Processa ogni video sequenzialmente per evitare sovraccarichi
+    for (let i = 0; i < videoPosts.length; i++) {
+      const post = videoPosts[i];
+      const { video_url, post_id, display_url } = post;
+      
+      console.log(`🎬 [${i + 1}/${videoPosts.length}] Processando post_id: ${post_id}`);
+      
+      try {
+        // Genera nomi file unici usando post_id
+        const timestamp = Date.now();
+        const videoPath = path.join(tempDir, `video_${post_id}_${timestamp}.mp4`);
+        const audioPath = path.join(tempDir, `audio_${post_id}_${timestamp}.mp3`);
+        const finalAudioPath = path.join(tempDir, `${post_id}.mp3`);
+        
+        // Step 1: Scarica il video
+        console.log(`📥 [${post_id}] Scaricando video...`);
+        await downloadFile(video_url, videoPath);
+        console.log(`✅ [${post_id}] Video scaricato`);
+        
+        // Step 2: Estrai MP3
+        console.log(`🎵 [${post_id}] Estraendo MP3...`);
+        await extractMP3(videoPath, audioPath);
+        console.log(`✅ [${post_id}] MP3 estratto`);
+        
+        // Step 3: Rinomina il file con post_id
+        fs.renameSync(audioPath, finalAudioPath);
+        
+        // Step 4: Leggi il file MP3
+        const audioBuffer = fs.readFileSync(finalAudioPath);
+        
+        // Step 5: Pulisci i file temporanei
+        fs.unlinkSync(videoPath);
+        fs.unlinkSync(finalAudioPath);
+        
+        // Step 6: Aggiungi ai risultati
+        results.push({
+          post_id: post_id,
+          success: true,
+          display_url: display_url,
+          video_url: video_url,
+          audio_size: audioBuffer.length,
+          audio_size_mb: (audioBuffer.length / 1024 / 1024).toFixed(2),
+          filename: `${post_id}.mp3`
+        });
+        
+        processedFiles.push({
+          post_id: post_id,
+          audio_buffer: audioBuffer,
+          filename: `${post_id}.mp3`
+        });
+        
+        console.log(`🎉 [${post_id}] MP3 processato con successo (${(audioBuffer.length / 1024 / 1024).toFixed(2)} MB)`);
+        
+        // Pausa tra le elaborazioni per non sovraccaricare
+        if (i < videoPosts.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+      } catch (error) {
+        console.error(`❌ [${post_id}] Errore durante l'elaborazione:`, error.message);
+        
+        // Pulisci file temporanei in caso di errore
+        try {
+          if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+          if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+          if (fs.existsSync(finalAudioPath)) fs.unlinkSync(finalAudioPath);
+        } catch (cleanupError) {
+          console.error(`Errore durante la pulizia per ${post_id}:`, cleanupError);
+        }
+        
+        results.push({
+          post_id: post_id,
+          success: false,
+          display_url: display_url,
+          video_url: video_url,
+          error: error.message
+        });
+      }
+    }
+    
+    // Step 7: Crea ZIP con tutti i file MP3 processati
+    let zipBuffer = null;
+    if (processedFiles.length > 0) {
+      console.log(`📦 Creando ZIP con ${processedFiles.length} file MP3...`);
+      
+      // Per ora restituiamo solo i risultati, il ZIP può essere implementato in seguito
+      // se necessario con una libreria come 'archiver'
+    }
+    
+    console.log(`🎉 Webhook completato: ${results.filter(r => r.success).length}/${videoPosts.length} video processati con successo`);
+    
+    res.json({
+      success: true,
+      message: `Processati ${results.filter(r => r.success).length}/${videoPosts.length} video con successo`,
+      total_posts: posts.length,
+      video_posts: videoPosts.length,
+      processed: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      results: results,
+      files_available: processedFiles.map(f => f.filename)
+    });
+    
+  } catch (error) {
+    console.error('❌ Errore durante il processing del webhook:', error);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Errore durante il processing del webhook',
+      details: error.message
+    });
+  }
+});
+
 // Test FFmpeg endpoint (PUBBLICO)
 app.get('/api/ffmpeg-test', (req, res) => {
   exec('ffmpeg -version', (error, stdout, stderr) => {
@@ -223,7 +368,8 @@ app.get('/api/health', (req, res) => {
       health: '/api/health (PUBBLICO)',
       ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
       extractMP3: '/api/extract-mp3 (PROTETTO - Richiede API Key)',
-      extractMP3Test: '/api/extract-mp3-test (PROTETTO - Richiede API Key)'
+      extractMP3Test: '/api/extract-mp3-test (PROTETTO - Richiede API Key)',
+      instagramWebhook: '/api/process-instagram-webhook (PROTETTO - Richiede API Key)'
     },
     security: {
       method: 'API Key da variabile d\'ambiente',
@@ -238,14 +384,15 @@ app.get('/api/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     message: 'Instagram Video Processor API - MP3 Extractor (PROTETTO)',
-    version: '1.0.0',
+    version: '2.0.0',
     authentication: 'Richiede API Key da variabile d\'ambiente per gli endpoint protetti',
     security: 'API Key gestita tramite variabile d\'ambiente API_KEY',
     endpoints: {
       health: '/api/health (PUBBLICO)',
       ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
       extractMP3: '/api/extract-mp3 (PROTETTO)',
-      extractMP3Test: '/api/extract-mp3-test (PROTETTO)'
+      extractMP3Test: '/api/extract-mp3-test (PROTETTO)',
+      instagramWebhook: '/api/process-instagram-webhook (PROTETTO)'
     },
     usage: {
       extractMP3: {
@@ -257,6 +404,24 @@ app.get('/', (req, res) => {
         },
         body: { videoUrl: 'https://example.com/video.mp4' },
         response: 'MP3 file'
+      },
+      instagramWebhook: {
+        method: 'POST',
+        url: '/api/process-instagram-webhook',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'YOUR_API_KEY'
+        },
+        body: {
+          posts: [
+            {
+              display_url: 'https://example.com/image.jpg',
+              post_id: '123456789',
+              video_url: 'https://example.com/video.mp4'
+            }
+          ]
+        },
+        response: 'JSON con risultati elaborazione'
       }
     },
     setup: {
