@@ -54,4 +54,12 @@ jspm_packages/
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Temporary files
+temp/
+*.mp3
+*.mp4
+*.jpg
+*.jpeg
+*.png 
