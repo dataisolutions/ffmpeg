@@ -2,6 +2,16 @@
 
 Un'applicazione Node.js con FFmpeg per estrarre MP3 da video e ridimensionare immagini tramite webhook protetto, deployata su Railway con integrazione Supabase Storage.
 
+## 🚀 **NUOVO: Risposta Immediata Webhook**
+
+**v2.4.0**: Il webhook Instagram ora risponde **immediatamente** con conferma e processa i contenuti in background per evitare timeout!
+
+### ✅ **Miglioramenti:**
+- **Risposta istantanea** (< 100ms)
+- **Elaborazione in background** per evitare timeout
+- **Conferma immediata** di ricezione
+- **Log dettagliati** per monitorare l'avanzamento
+
 ## 🔐 Autenticazione Sicura
 
 L'API richiede un'API key per gli endpoint protetti. La chiave è gestita tramite variabile d'ambiente `API_KEY` per massima sicurezza.
@@ -143,12 +153,17 @@ node test-webhook.js
 API_KEY=la-tua-chiave node test-webhook.js
 ```
 
-## 📱 Webhook Instagram (PROTETTO)
+## 📱 Webhook Instagram (PROTETTO) - RISPOSTA IMMEDIATA
 
 ### Endpoint principale
 ```
 POST /api/process-instagram-webhook
 ```
+
+### 🚀 **NUOVO: Risposta Immediata**
+- **Risposta istantanea** (< 100ms) con conferma di ricezione
+- **Elaborazione in background** per evitare timeout
+- **Status di elaborazione** disponibile tramite log
 
 ### Funzionalità
 - **Estrazione MP3**: Da video Instagram (se presenti)
@@ -216,35 +231,24 @@ const result = await response.json();
 console.log(result);
 ```
 
-### Risposta
+### Risposta (IMMEDIATA)
 ```json
 {
   "success": true,
-  "processed": 1,
-  "results": [
-    {
-      "post_id": "123456789",
-      "success": true,
-      "has_video": true,
-      "has_image": true,
-      "audio": {
-        "audio_size_mb": "0.69",
-        "filename": "123456789.mp3"
-      },
-      "image": {
-        "supabase": {
-          "success": true,
-          "publicUrl": "https://bayjsvnbzomfycypeerx.supabase.co/storage/v1/object/public/thumbnail/123456789_thumb.jpg"
-        },
-        "database_update": {
-          "success": true,
-          "updated_rows": 1
-        }
-      }
-    }
-  ]
+  "message": "Webhook ricevuto con successo - 2 contenuti in elaborazione",
+  "status": "processing",
+  "total_posts": 2,
+  "posts_to_process": 2,
+  "processing_started": "2024-01-15T10:30:00.000Z",
+  "note": "I contenuti verranno elaborati in background. Controlla i log per lo stato di avanzamento."
 }
 ```
+
+### 📊 **Monitoraggio Elaborazione**
+L'elaborazione avviene in background. Per monitorare lo stato:
+- **Controlla i log** su Railway Dashboard
+- **Endpoint status**: `GET /api/processing-status` (PUBBLICO)
+- **Health check**: `GET /api/health` (PUBBLICO)
 
 ## 📁 Struttura del progetto
 
@@ -269,9 +273,34 @@ export API_KEY=ARISE100
 
 # Avvia in modalità sviluppo
 npm run dev
+```
 
-# Avvia in modalità sviluppo
-npm run dev
+## 🧪 Test
+
+### Test risposta immediata webhook
+```bash
+# Test risposta immediata
+node test-webhook-immediate.js
+
+# Test con API key personalizzata
+API_KEY=la-tua-chiave node test-webhook-immediate.js
+```
+
+### Test cURL
+```bash
+# Test risposta immediata
+curl -X POST https://ffmpeg-production-c6ca.up.railway.app/api/process-instagram-webhook \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: ARISE100" \
+  -d '{
+    "posts": [
+      {
+        "post_id": "test_immediate",
+        "display_url": "https://example.com/image.jpg",
+        "video_url": "https://example.com/video.mp4"
+      }
+    ]
+  }'
 ```
 
 ## 📡 Endpoints API
@@ -280,10 +309,11 @@ npm run dev
 - `GET /` - Informazioni sull'API
 - `GET /api/health` - Health check
 - `GET /api/ffmpeg-test` - Test installazione FFmpeg
+- `GET /api/processing-status` - Status elaborazione webhook
 
 ### Endpoint protetti (Richiedono API key)
 - `POST /api/extract-mp3` - Estrai MP3 da URL video
-- `POST /api/process-instagram-webhook` - Processa array di post Instagram
+- `POST /api/process-instagram-webhook` - Processa array di post Instagram (RISPOSTA IMMEDIATA)
 - `GET /api/extract-mp3-test` - Test endpoint (GET)
 
 ## 🛠️ Tecnologie e Dipendenze

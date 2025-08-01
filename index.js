@@ -367,7 +367,7 @@ app.get('/api/extract-mp3-test', authenticateApiKey, async (req, res) => {
   });
 });
 
-// Webhook per processare array JSON di contenuti Instagram (PROTETTO)
+// Webhook per processare array JSON di contenuti Instagram (PROTETTO) - RISPOSTA IMMEDIATA
 app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) => {
   try {
     const { posts } = req.body;
@@ -398,6 +398,23 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
     }
     
     console.log(`📦 Trovati ${postsToProcess.length} post da processare`);
+    
+    // RISPOSTA IMMEDIATA - Conferma ricezione
+    const responseData = {
+      success: true,
+      message: `Webhook ricevuto con successo - ${postsToProcess.length} contenuti in elaborazione`,
+      status: 'processing',
+      total_posts: posts.length,
+      posts_to_process: postsToProcess.length,
+      processing_started: new Date().toISOString(),
+      note: 'I contenuti verranno elaborati in background. Controlla i log per lo stato di avanzamento.'
+    };
+    
+    // Invia risposta immediata
+    res.status(200).json(responseData);
+    
+    // PROCESSING IN BACKGROUND (dopo aver inviato la risposta)
+    console.log(`🔄 Avvio elaborazione in background per ${postsToProcess.length} post...`);
     
     const results = [];
     const processedFiles = [];
@@ -544,42 +561,14 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
       }
     }
     
-    // Step 7: Crea ZIP con tutti i file MP3 processati
-    let zipBuffer = null;
-    if (processedFiles.length > 0) {
-      console.log(`📦 Creando ZIP con ${processedFiles.length} file MP3...`);
-      
-      // Per ora restituiamo solo i risultati, il ZIP può essere implementato in seguito
-      // se necessario con una libreria come 'archiver'
-    }
-    
     const successfulResults = results.filter(r => r.success);
     const videoCount = successfulResults.filter(r => r.has_video).length;
     const imageCount = successfulResults.filter(r => r.has_image).length;
     
-    console.log(`🎉 Webhook completato: ${successfulResults.length}/${postsToProcess.length} post processati con successo (${videoCount} video, ${imageCount} immagini)`);
-    
-    res.json({
-      success: true,
-      message: `Processati ${successfulResults.length}/${postsToProcess.length} post con successo (${videoCount} video, ${imageCount} immagini)`,
-      total_posts: posts.length,
-      posts_to_process: postsToProcess.length,
-      processed: successfulResults.length,
-      failed: results.filter(r => !r.success).length,
-      video_processed: videoCount,
-      images_processed: imageCount,
-      results: results,
-      files_available: processedFiles.map(f => f.filename)
-    });
+    console.log(`🎉 Elaborazione background completata: ${successfulResults.length}/${postsToProcess.length} post processati con successo (${videoCount} video, ${imageCount} immagini)`);
     
   } catch (error) {
-    console.error('❌ Errore durante il processing del webhook:', error);
-    
-    res.status(500).json({
-      success: false,
-      error: 'Errore durante il processing del webhook',
-      details: error.message
-    });
+    console.error('❌ Errore durante il processing in background:', error);
   }
 });
 
@@ -607,6 +596,25 @@ app.get('/api/ffmpeg-test', (req, res) => {
   });
 });
 
+// Endpoint per controllare lo stato dell'elaborazione (PUBBLICO)
+app.get('/api/processing-status', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Stato elaborazione webhook Instagram',
+    note: 'L\'elaborazione avviene in background. Controlla i log su Railway per lo stato di avanzamento.',
+    endpoints: {
+      webhook: 'POST /api/process-instagram-webhook (PROTETTO)',
+      health: 'GET /api/health (PUBBLICO)',
+      ffmpeg: 'GET /api/ffmpeg-test (PUBBLICO)'
+    },
+    processing_info: {
+      status: 'background',
+      response_time: 'immediate',
+      note: 'Il webhook risponde immediatamente con conferma, poi elabora in background'
+    }
+  });
+});
+
 // Health check endpoint (PUBBLICO)
 app.get('/api/health', (req, res) => {
   res.json({
@@ -617,9 +625,15 @@ app.get('/api/health', (req, res) => {
     endpoints: {
       health: '/api/health (PUBBLICO)',
       ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
+      processingStatus: '/api/processing-status (PUBBLICO)',
       extractMP3: '/api/extract-mp3 (PROTETTO - Richiede API Key)',
       extractMP3Test: '/api/extract-mp3-test (PROTETTO - Richiede API Key)',
-      instagramWebhook: '/api/process-instagram-webhook (PROTETTO - Richiede API Key)'
+      instagramWebhook: '/api/process-instagram-webhook (PROTETTO - Richiede API Key - RISPOSTA IMMEDIATA)'
+    },
+    webhook_improvements: {
+      response_time: 'IMMEDIATO',
+      processing: 'BACKGROUND',
+      note: 'Il webhook Instagram ora risponde immediatamente e processa in background'
     },
     security: {
       method: 'API Key da variabile d\'ambiente',
@@ -634,15 +648,21 @@ app.get('/api/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     message: 'Instagram Video Processor API - MP3 Extractor & Image Resizer with Supabase Storage & Database Update (PROTETTO)',
-    version: '2.3.0',
+    version: '2.4.0',
     authentication: 'Richiede API Key da variabile d\'ambiente per gli endpoint protetti',
     security: 'API Key gestita tramite variabile d\'ambiente API_KEY',
+    webhook_improvements: {
+      response_time: 'IMMEDIATO',
+      processing: 'BACKGROUND',
+      note: 'Il webhook Instagram ora risponde immediatamente e processa in background per evitare timeout'
+    },
     endpoints: {
       health: '/api/health (PUBBLICO)',
       ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
+      processingStatus: '/api/processing-status (PUBBLICO)',
       extractMP3: '/api/extract-mp3 (PROTETTO)',
       extractMP3Test: '/api/extract-mp3-test (PROTETTO)',
-      instagramWebhook: '/api/process-instagram-webhook (PROTETTO)'
+      instagramWebhook: '/api/process-instagram-webhook (PROTETTO - RISPOSTA IMMEDIATA)'
     },
     usage: {
       extractMP3: {
@@ -671,7 +691,7 @@ app.get('/', (req, res) => {
             }
           ]
         },
-        response: 'JSON con risultati elaborazione'
+        response: 'JSON con conferma immediata - elaborazione in background'
       }
     },
     setup: {
