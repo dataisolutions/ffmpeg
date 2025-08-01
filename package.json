@@ -1,6 +1,6 @@
 {
   "name": "instagram-video-processor",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "description": "Instagram video processing with FFmpeg on Railway",
   "main": "index.js",
   "scripts": {

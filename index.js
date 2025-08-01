@@ -11,6 +11,10 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Sistema di tracking elaborazioni in background
+const processingJobs = new Map();
+let jobCounter = 0;
+
 // API Key - SOLO da variabile d'ambiente per sicurezza
 const API_KEY = process.env.API_KEY;
 
@@ -278,6 +282,79 @@ async function updateInstagramPostThumbnail(postId, thumbnailUrl) {
   }
 }
 
+// Funzioni per il sistema di tracking elaborazioni
+function createJobId() {
+  return `job_${Date.now()}_${++jobCounter}`;
+}
+
+function createJobStatus(totalPosts) {
+  return {
+    id: createJobId(),
+    status: 'processing',
+    created_at: new Date().toISOString(),
+    total_posts: totalPosts,
+    processed: 0,
+    failed: 0,
+    results: [],
+    progress_percentage: 0,
+    estimated_completion: null,
+    completed_at: null
+  };
+}
+
+function updateJobProgress(jobId, processed, failed, results) {
+  const job = processingJobs.get(jobId);
+  if (job) {
+    job.processed = processed;
+    job.failed = failed;
+    job.results = results;
+    job.progress_percentage = Math.round((processed + failed) / job.total_posts * 100);
+    
+    // Stima completamento (circa 2.5 secondi per post)
+    const remainingPosts = job.total_posts - (processed + failed);
+    const estimatedSeconds = remainingPosts * 2.5;
+    job.estimated_completion = new Date(Date.now() + estimatedSeconds * 1000).toISOString();
+    
+    console.log(`📊 [Job ${jobId}] Progresso: ${job.progress_percentage}% (${processed + failed}/${job.total_posts})`);
+  }
+}
+
+function completeJob(jobId, finalResults) {
+  const job = processingJobs.get(jobId);
+  if (job) {
+    job.status = 'completed';
+    job.completed_at = new Date().toISOString();
+    job.results = finalResults;
+    job.progress_percentage = 100;
+    job.estimated_completion = null;
+    
+    console.log(`✅ [Job ${jobId}] Elaborazione completata!`);
+    
+    // Mantieni il job per 1 ora per consultazioni
+    setTimeout(() => {
+      processingJobs.delete(jobId);
+      console.log(`🗑️ [Job ${jobId}] Rimosso dalla memoria`);
+    }, 60 * 60 * 1000); // 1 ora
+  }
+}
+
+function failJob(jobId, error) {
+  const job = processingJobs.get(jobId);
+  if (job) {
+    job.status = 'failed';
+    job.completed_at = new Date().toISOString();
+    job.error = error.message;
+    
+    console.log(`❌ [Job ${jobId}] Elaborazione fallita: ${error.message}`);
+    
+    // Mantieni il job per 1 ora per consultazioni
+    setTimeout(() => {
+      processingJobs.delete(jobId);
+      console.log(`🗑️ [Job ${jobId}] Rimosso dalla memoria`);
+    }, 60 * 60 * 1000); // 1 ora
+  }
+}
+
 // Webhook per estrarre MP3 da URL video (PROTETTO)
 app.post('/api/extract-mp3', authenticateApiKey, async (req, res) => {
   try {
@@ -399,22 +476,31 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
     
     console.log(`📦 Trovati ${postsToProcess.length} post da processare`);
     
-    // RISPOSTA IMMEDIATA - Conferma ricezione
+    // Crea job di tracking
+    const jobId = createJobId();
+    const jobStatus = createJobStatus(postsToProcess.length);
+    processingJobs.set(jobId, jobStatus);
+    
+    console.log(`📋 [Job ${jobId}] Creato job di tracking per ${postsToProcess.length} post`);
+    
+    // RISPOSTA IMMEDIATA - Conferma ricezione con job ID
     const responseData = {
       success: true,
       message: `Webhook ricevuto con successo - ${postsToProcess.length} contenuti in elaborazione`,
       status: 'processing',
+      job_id: jobId,
       total_posts: posts.length,
       posts_to_process: postsToProcess.length,
       processing_started: new Date().toISOString(),
-      note: 'I contenuti verranno elaborati in background. Controlla i log per lo stato di avanzamento.'
+      check_status_url: `/api/job-status/${jobId}`,
+      note: 'Usa il job_id per controllare lo stato di elaborazione tramite /api/job-status/{job_id}'
     };
     
     // Invia risposta immediata
     res.status(200).json(responseData);
     
     // PROCESSING IN BACKGROUND (dopo aver inviato la risposta)
-    console.log(`🔄 Avvio elaborazione in background per ${postsToProcess.length} post...`);
+    console.log(`🔄 [Job ${jobId}] Avvio elaborazione in background per ${postsToProcess.length} post...`);
     
     const results = [];
     const processedFiles = [];
@@ -533,6 +619,11 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
           has_image: !!imageResult
         });
         
+        // Aggiorna progresso del job
+        const successfulResults = results.filter(r => r.success);
+        const failedResults = results.filter(r => !r.success);
+        updateJobProgress(jobId, successfulResults.length, failedResults.length, results);
+        
         // Pausa tra le elaborazioni per non sovraccaricare
         if (i < postsToProcess.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -558,6 +649,11 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
           video_url: video_url,
           error: error.message
         });
+        
+        // Aggiorna progresso del job anche per errori
+        const successfulResults = results.filter(r => r.success);
+        const failedResults = results.filter(r => !r.success);
+        updateJobProgress(jobId, successfulResults.length, failedResults.length, results);
       }
     }
     
@@ -565,10 +661,22 @@ app.post('/api/process-instagram-webhook', authenticateApiKey, async (req, res) 
     const videoCount = successfulResults.filter(r => r.has_video).length;
     const imageCount = successfulResults.filter(r => r.has_image).length;
     
-    console.log(`🎉 Elaborazione background completata: ${successfulResults.length}/${postsToProcess.length} post processati con successo (${videoCount} video, ${imageCount} immagini)`);
+    console.log(`🎉 [Job ${jobId}] Elaborazione background completata: ${successfulResults.length}/${postsToProcess.length} post processati con successo (${videoCount} video, ${imageCount} immagini)`);
+    
+    // Completa il job
+    completeJob(jobId, {
+      total_posts: postsToProcess.length,
+      processed: successfulResults.length,
+      failed: results.filter(r => !r.success).length,
+      video_processed: videoCount,
+      images_processed: imageCount,
+      results: results,
+      files_available: processedFiles.map(f => f.filename)
+    });
     
   } catch (error) {
-    console.error('❌ Errore durante il processing in background:', error);
+    console.error(`❌ [Job ${jobId}] Errore durante il processing in background:`, error);
+    failJob(jobId, error);
   }
 });
 
@@ -604,6 +712,7 @@ app.get('/api/processing-status', (req, res) => {
     note: 'L\'elaborazione avviene in background. Controlla i log su Railway per lo stato di avanzamento.',
     endpoints: {
       webhook: 'POST /api/process-instagram-webhook (PROTETTO)',
+      jobStatus: 'GET /api/job-status/{job_id} (PUBBLICO)',
       health: 'GET /api/health (PUBBLICO)',
       ffmpeg: 'GET /api/ffmpeg-test (PUBBLICO)'
     },
@@ -611,7 +720,69 @@ app.get('/api/processing-status', (req, res) => {
       status: 'background',
       response_time: 'immediate',
       note: 'Il webhook risponde immediatamente con conferma, poi elabora in background'
-    }
+    },
+    active_jobs: processingJobs.size
+  });
+});
+
+// Endpoint per controllare lo stato di un job specifico (PUBBLICO)
+app.get('/api/job-status/:jobId', (req, res) => {
+  const { jobId } = req.params;
+  
+  const job = processingJobs.get(jobId);
+  
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: 'Job non trovato',
+      message: 'Il job ID fornito non esiste o è scaduto',
+      note: 'I job vengono mantenuti in memoria per 1 ora dopo il completamento'
+    });
+  }
+  
+  res.json({
+    success: true,
+    job: {
+      id: job.id,
+      status: job.status,
+      created_at: job.created_at,
+      completed_at: job.completed_at,
+      total_posts: job.total_posts,
+      processed: job.processed,
+      failed: job.failed,
+      progress_percentage: job.progress_percentage,
+      estimated_completion: job.estimated_completion,
+      results: job.results,
+      error: job.error
+    },
+    summary: job.status === 'completed' ? {
+      total_posts: job.results.total_posts,
+      processed: job.results.processed,
+      failed: job.results.failed,
+      video_processed: job.results.video_processed,
+      images_processed: job.results.images_processed,
+      files_available: job.results.files_available
+    } : null
+  });
+});
+
+// Endpoint per listare tutti i job attivi (PUBBLICO)
+app.get('/api/jobs', (req, res) => {
+  const jobs = Array.from(processingJobs.values()).map(job => ({
+    id: job.id,
+    status: job.status,
+    created_at: job.created_at,
+    completed_at: job.completed_at,
+    total_posts: job.total_posts,
+    processed: job.processed,
+    failed: job.failed,
+    progress_percentage: job.progress_percentage
+  }));
+  
+  res.json({
+    success: true,
+    total_jobs: jobs.length,
+    jobs: jobs
   });
 });
 
@@ -626,6 +797,8 @@ app.get('/api/health', (req, res) => {
       health: '/api/health (PUBBLICO)',
       ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
       processingStatus: '/api/processing-status (PUBBLICO)',
+      jobStatus: '/api/job-status/{job_id} (PUBBLICO)',
+      jobs: '/api/jobs (PUBBLICO)',
       extractMP3: '/api/extract-mp3 (PROTETTO - Richiede API Key)',
       extractMP3Test: '/api/extract-mp3-test (PROTETTO - Richiede API Key)',
       instagramWebhook: '/api/process-instagram-webhook (PROTETTO - Richiede API Key - RISPOSTA IMMEDIATA)'
@@ -648,7 +821,7 @@ app.get('/api/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     message: 'Instagram Video Processor API - MP3 Extractor & Image Resizer with Supabase Storage & Database Update (PROTETTO)',
-    version: '2.4.0',
+    version: '2.5.0',
     authentication: 'Richiede API Key da variabile d\'ambiente per gli endpoint protetti',
     security: 'API Key gestita tramite variabile d\'ambiente API_KEY',
     webhook_improvements: {
@@ -660,6 +833,8 @@ app.get('/', (req, res) => {
       health: '/api/health (PUBBLICO)',
       ffmpegTest: '/api/ffmpeg-test (PUBBLICO)',
       processingStatus: '/api/processing-status (PUBBLICO)',
+      jobStatus: '/api/job-status/{job_id} (PUBBLICO)',
+      jobs: '/api/jobs (PUBBLICO)',
       extractMP3: '/api/extract-mp3 (PROTETTO)',
       extractMP3Test: '/api/extract-mp3-test (PROTETTO)',
       instagramWebhook: '/api/process-instagram-webhook (PROTETTO - RISPOSTA IMMEDIATA)'
